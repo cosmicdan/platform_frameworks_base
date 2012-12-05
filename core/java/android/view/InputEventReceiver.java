@@ -46,8 +46,7 @@ public abstract class InputEventReceiver {
             InputChannel inputChannel, MessageQueue messageQueue);
     private static native void nativeDispose(int receiverPtr);
     private static native void nativeFinishInputEvent(int receiverPtr, int seq, boolean handled);
-    private static native void nativeConsumeBatchedInputEvents(int receiverPtr,
-            long frameTimeNanos);
+    private static native void nativeConsumeBatchedInputEvents(int receiverPtr);
 
     /**
      * Creates an input event receiver bound to the specified input channel.
@@ -115,7 +114,7 @@ public abstract class InputEventReceiver {
      * immediately (such as a pointer up event).
      */
     public void onBatchedInputEventPending() {
-        consumeBatchedInputEvents(-1);
+        consumeBatchedInputEvents();
     }
 
     /**
@@ -151,16 +150,13 @@ public abstract class InputEventReceiver {
      *
      * This method forces all batched input events to be delivered immediately.
      * Should be called just before animating or drawing a new frame in the UI.
-     *
-     * @param frameTimeNanos The time in the {@link System#nanoTime()} time base
-     * when the current display frame started rendering, or -1 if unknown.
      */
-    public final void consumeBatchedInputEvents(long frameTimeNanos) {
+    public final void consumeBatchedInputEvents() {
         if (mReceiverPtr == 0) {
             Log.w(TAG, "Attempted to consume batched input events but the input event "
                     + "receiver has already been disposed.");
         } else {
-            nativeConsumeBatchedInputEvents(mReceiverPtr, frameTimeNanos);
+            nativeConsumeBatchedInputEvents(mReceiverPtr);
         }
     }
 
