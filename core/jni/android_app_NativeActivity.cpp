@@ -21,16 +21,13 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 
+#include <android_runtime/AndroidRuntime.h>
+#include <android_runtime/android_view_Surface.h>
 #include <android_runtime/android_app_NativeActivity.h>
 #include <android_runtime/android_util_AssetManager.h>
-#include <android_runtime/android_view_Surface.h>
-#include <android_runtime/AndroidRuntime.h>
+#include <surfaceflinger/Surface.h>
+#include <ui/egl/android_natives.h>
 #include <androidfw/InputTransport.h>
-
-#include <gui/Surface.h>
-
-#include <system/window.h>
-
 #include <utils/Looper.h>
 
 #include "JNIHelp.h"
@@ -162,12 +159,12 @@ int32_t AInputQueue::hasEvents() {
 int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
     *outEvent = NULL;
 
+    bool finishNow = false;
+
     char byteread;
     ssize_t nRead = read(mDispatchKeyRead, &byteread, 1);
-
-    Mutex::Autolock _l(mLock);
-
     if (nRead == 1) {
+        mLock.lock();
         if (mDispatchingKeys.size() > 0) {
             KeyEvent* kevent = mDispatchingKeys[0];
             *outEvent = kevent;
@@ -178,8 +175,6 @@ int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
             inflight.finishSeq = 0;
             mInFlightEvents.push(inflight);
         }
-
-        bool finishNow = false;
         if (mFinishPreDispatches.size() > 0) {
             finish_pre_dispatch finish(mFinishPreDispatches[0]);
             mFinishPreDispatches.removeAt(0);
@@ -195,6 +190,7 @@ int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
                 ALOGW("getEvent couldn't find inflight for seq %d", finish.seq);
             }
         }
+        mLock.unlock();
 
         if (finishNow) {
             finishEvent(*outEvent, true, false);
@@ -207,18 +203,13 @@ int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
 
     uint32_t consumerSeq;
     InputEvent* myEvent = NULL;
-    status_t res = mConsumer.consume(&mPooledInputEventFactory, true /*consumeBatches*/,
-            &consumerSeq, &myEvent);
+    status_t res = mConsumer.consume(this, true /*consumeBatches*/, &consumerSeq, &myEvent);
     if (res != android::OK) {
         if (res != android::WOULD_BLOCK) {
             ALOGW("channel '%s' ~ Failed to consume input event.  status=%d",
                     mConsumer.getChannel()->getName().string(), res);
         }
         return -1;
-    }
-
-    if (mConsumer.hasDeferredEvent()) {
-        wakeupDispatchLocked();
     }
 
     in_flight_event inflight;
@@ -261,8 +252,7 @@ void AInputQueue::finishEvent(AInputEvent* event, bool handled, bool didDefaultH
         return;
     }
 
-    Mutex::Autolock _l(mLock);
-
+    mLock.lock();
     const size_t N = mInFlightEvents.size();
     for (size_t i=0; i<N; i++) {
         const in_flight_event& inflight(mInFlightEvents[i]);
@@ -274,82 +264,111 @@ void AInputQueue::finishEvent(AInputEvent* event, bool handled, bool didDefaultH
                             mConsumer.getChannel()->getName().string(), res);
                 }
             }
-            mPooledInputEventFactory.recycle(static_cast<InputEvent*>(event));
+            if (static_cast<InputEvent*>(event)->getType() == AINPUT_EVENT_TYPE_KEY) {
+                mAvailKeyEvents.push(static_cast<KeyEvent*>(event));
+            } else {
+                mAvailMotionEvents.push(static_cast<MotionEvent*>(event));
+            }
             mInFlightEvents.removeAt(i);
+            mLock.unlock();
             return;
         }
     }
-
+    mLock.unlock();
+    
     ALOGW("finishEvent called for unknown event: %p", event);
 }
 
 void AInputQueue::dispatchEvent(android::KeyEvent* event) {
-    Mutex::Autolock _l(mLock);
-
+    mLock.lock();
     LOG_TRACE("dispatchEvent: dispatching=%d write=%d\n", mDispatchingKeys.size(),
             mDispatchKeyWrite);
     mDispatchingKeys.add(event);
-    wakeupDispatchLocked();
+    wakeupDispatch();
+    mLock.unlock();
 }
 
 void AInputQueue::finishPreDispatch(int seq, bool handled) {
-    Mutex::Autolock _l(mLock);
-
+    mLock.lock();
     LOG_TRACE("finishPreDispatch: seq=%d handled=%d\n", seq, handled ? 1 : 0);
     finish_pre_dispatch finish;
     finish.seq = seq;
     finish.handled = handled;
     mFinishPreDispatches.add(finish);
-    wakeupDispatchLocked();
+    wakeupDispatch();
+    mLock.unlock();
 }
 
 KeyEvent* AInputQueue::consumeUnhandledEvent() {
-    Mutex::Autolock _l(mLock);
-
     KeyEvent* event = NULL;
+
+    mLock.lock();
     if (mUnhandledKeys.size() > 0) {
         event = mUnhandledKeys[0];
         mUnhandledKeys.removeAt(0);
     }
+    mLock.unlock();
 
     LOG_TRACE("consumeUnhandledEvent: KeyEvent=%p", event);
+
     return event;
 }
 
 KeyEvent* AInputQueue::consumePreDispatchingEvent(int* outSeq) {
-    Mutex::Autolock _l(mLock);
-
     KeyEvent* event = NULL;
+
+    mLock.lock();
     if (mPreDispatchingKeys.size() > 0) {
         const in_flight_event& inflight(mPreDispatchingKeys[0]);
         event = static_cast<KeyEvent*>(inflight.event);
         *outSeq = inflight.seq;
         mPreDispatchingKeys.removeAt(0);
     }
+    mLock.unlock();
 
     LOG_TRACE("consumePreDispatchingEvent: KeyEvent=%p", event);
+
     return event;
 }
 
 KeyEvent* AInputQueue::createKeyEvent() {
-    Mutex::Autolock _l(mLock);
+    mLock.lock();
+    KeyEvent* event;
+    if (mAvailKeyEvents.size() <= 0) {
+        event = new KeyEvent();
+    } else {
+        event = mAvailKeyEvents.top();
+        mAvailKeyEvents.pop();
+    }
+    mLock.unlock();
+    return event;
+}
 
-    return mPooledInputEventFactory.createKeyEvent();
+MotionEvent* AInputQueue::createMotionEvent() {
+    mLock.lock();
+    MotionEvent* event;
+    if (mAvailMotionEvents.size() <= 0) {
+        event = new MotionEvent();
+    } else {
+        event = mAvailMotionEvents.top();
+        mAvailMotionEvents.pop();
+    }
+    mLock.unlock();
+    return event;
 }
 
 void AInputQueue::doUnhandledKey(KeyEvent* keyEvent) {
-    Mutex::Autolock _l(mLock);
-
+    mLock.lock();
     LOG_TRACE("Unhandled key: pending=%d write=%d\n", mUnhandledKeys.size(), mWorkWrite);
     if (mUnhandledKeys.size() <= 0 && mWorkWrite >= 0) {
         write_work(mWorkWrite, CMD_DEF_KEY);
     }
     mUnhandledKeys.add(keyEvent);
+    mLock.unlock();
 }
 
 bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
-    Mutex::Autolock _l(mLock);
-
+    mLock.lock();
     LOG_TRACE("preDispatch key: pending=%d write=%d\n", mPreDispatchingKeys.size(), mWorkWrite);
     const size_t N = mInFlightEvents.size();
     for (size_t i=0; i<N; i++) {
@@ -358,6 +377,7 @@ bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
             if (inflight.seq >= 0) {
                 // This event has already been pre-dispatched!
                 LOG_TRACE("Event already pre-dispatched!");
+                mLock.unlock();
                 return false;
             }
             mSeq++;
@@ -368,6 +388,7 @@ bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
                 write_work(mWorkWrite, CMD_DEF_KEY);
             }
             mPreDispatchingKeys.add(inflight);
+            mLock.unlock();
             return true;
         }
     }
@@ -376,7 +397,7 @@ bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
     return false;
 }
 
-void AInputQueue::wakeupDispatchLocked() {
+void AInputQueue::wakeupDispatch() {
 restart:
     char dummy = 0;
     int res = write(mDispatchKeyWrite, &dummy, sizeof(dummy));
@@ -416,8 +437,8 @@ struct NativeCode : public ANativeActivity {
         if (env != NULL && clazz != NULL) {
             env->DeleteGlobalRef(clazz);
         }
-        if (messageQueue != NULL && mainWorkRead >= 0) {
-            messageQueue->getLooper()->removeFd(mainWorkRead);
+        if (looper != NULL && mainWorkRead >= 0) {
+            looper->removeFd(mainWorkRead);
         }
         if (nativeInputQueue != NULL) {
             nativeInputQueue->mWorkWrite = -1;
@@ -481,7 +502,7 @@ struct NativeCode : public ANativeActivity {
     // These are used to wake up the main thread to process work.
     int mainWorkRead;
     int mainWorkWrite;
-    sp<MessageQueue> messageQueue;
+    sp<Looper> looper;
 };
 
 void android_NativeActivity_finish(ANativeActivity* activity) {
@@ -515,6 +536,16 @@ void android_NativeActivity_hideSoftInput(
 
 // ------------------------------------------------------------------------
 
+static bool checkAndClearExceptionFromCallback(JNIEnv* env, const char* methodName) {
+   if (env->ExceptionCheck()) {
+       ALOGE("An exception was thrown by callback '%s'.", methodName);
+       LOGE_EX(env);
+       env->ExceptionClear();
+       return true;
+   }
+   return false;
+}
+
 /*
  * Callback for handling native events on the application's main thread.
  */
@@ -541,8 +572,7 @@ static int mainWorkCallback(int fd, int events, void* data) {
                 if (inputEventObj) {
                     handled = code->env->CallBooleanMethod(code->clazz,
                             gNativeActivityClassInfo.dispatchUnhandledKeyEvent, inputEventObj);
-                    code->messageQueue->raiseAndClearException(
-                            code->env, "dispatchUnhandledKeyEvent");
+                    checkAndClearExceptionFromCallback(code->env, "dispatchUnhandledKeyEvent");
                     code->env->DeleteLocalRef(inputEventObj);
                 } else {
                     ALOGE("Failed to obtain key event for dispatchUnhandledKeyEvent.");
@@ -557,7 +587,7 @@ static int mainWorkCallback(int fd, int events, void* data) {
                 if (inputEventObj) {
                     code->env->CallVoidMethod(code->clazz,
                             gNativeActivityClassInfo.preDispatchKeyEvent, inputEventObj, seq);
-                    code->messageQueue->raiseAndClearException(code->env, "preDispatchKeyEvent");
+                    checkAndClearExceptionFromCallback(code->env, "preDispatchKeyEvent");
                     code->env->DeleteLocalRef(inputEventObj);
                 } else {
                     ALOGE("Failed to obtain key event for preDispatchKeyEvent.");
@@ -566,27 +596,27 @@ static int mainWorkCallback(int fd, int events, void* data) {
         } break;
         case CMD_FINISH: {
             code->env->CallVoidMethod(code->clazz, gNativeActivityClassInfo.finish);
-            code->messageQueue->raiseAndClearException(code->env, "finish");
+            checkAndClearExceptionFromCallback(code->env, "finish");
         } break;
         case CMD_SET_WINDOW_FORMAT: {
             code->env->CallVoidMethod(code->clazz,
                     gNativeActivityClassInfo.setWindowFormat, work.arg1);
-            code->messageQueue->raiseAndClearException(code->env, "setWindowFormat");
+            checkAndClearExceptionFromCallback(code->env, "setWindowFormat");
         } break;
         case CMD_SET_WINDOW_FLAGS: {
             code->env->CallVoidMethod(code->clazz,
                     gNativeActivityClassInfo.setWindowFlags, work.arg1, work.arg2);
-            code->messageQueue->raiseAndClearException(code->env, "setWindowFlags");
+            checkAndClearExceptionFromCallback(code->env, "setWindowFlags");
         } break;
         case CMD_SHOW_SOFT_INPUT: {
             code->env->CallVoidMethod(code->clazz,
                     gNativeActivityClassInfo.showIme, work.arg1);
-            code->messageQueue->raiseAndClearException(code->env, "showIme");
+            checkAndClearExceptionFromCallback(code->env, "showIme");
         } break;
         case CMD_HIDE_SOFT_INPUT: {
             code->env->CallVoidMethod(code->clazz,
                     gNativeActivityClassInfo.hideIme, work.arg1);
-            code->messageQueue->raiseAndClearException(code->env, "hideIme");
+            checkAndClearExceptionFromCallback(code->env, "hideIme");
         } break;
         default:
             ALOGW("Unknown work command: %d", work.cmd);
@@ -625,9 +655,9 @@ loadNativeCode_native(JNIEnv* env, jobject clazz, jstring path, jstring funcName
             return 0;
         }
         
-        code->messageQueue = android_os_MessageQueue_getMessageQueue(env, messageQueue);
-        if (code->messageQueue == NULL) {
-            ALOGW("Unable to retrieve native MessageQueue");
+        code->looper = android_os_MessageQueue_getLooper(env, messageQueue);
+        if (code->looper == NULL) {
+            ALOGW("Unable to retrieve MessageQueue's Looper");
             delete code;
             return 0;
         }
@@ -646,8 +676,7 @@ loadNativeCode_native(JNIEnv* env, jobject clazz, jstring path, jstring funcName
         result = fcntl(code->mainWorkWrite, F_SETFL, O_NONBLOCK);
         SLOGW_IF(result != 0, "Could not make main work write pipe "
                 "non-blocking: %s", strerror(errno));
-        code->messageQueue->getLooper()->addFd(
-                code->mainWorkRead, 0, ALOOPER_EVENT_INPUT, mainWorkCallback, code);
+        code->looper->addFd(code->mainWorkRead, 0, ALOOPER_EVENT_INPUT, mainWorkCallback, code);
         
         code->ANativeActivity::callbacks = &code->callbacks;
         if (env->GetJavaVM(&code->vm) < 0) {
