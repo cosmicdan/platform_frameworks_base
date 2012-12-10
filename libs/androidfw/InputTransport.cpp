@@ -37,8 +37,7 @@ namespace android {
 // we really need.  So we make it smaller.  It just needs to be big enough to hold
 // a few dozen large multi-finger motion events in the case where an application gets
 // behind processing touches.
-//static const size_t SOCKET_BUFFER_SIZE = 32 * 1024;
-static const size_t SOCKET_BUFFER_SIZE = 2048 * 1024;
+static const size_t SOCKET_BUFFER_SIZE = 32 * 1024;
 
 // Nanoseconds per milliseconds.
 static const nsecs_t NANOS_PER_MS = 1000000;
@@ -48,13 +47,11 @@ static const nsecs_t NANOS_PER_MS = 1000000;
 static const nsecs_t RESAMPLE_LATENCY = 5 * NANOS_PER_MS;
 
 // Minimum time difference between consecutive samples before attempting to resample.
-//static const nsecs_t RESAMPLE_MIN_DELTA = 2 * NANOS_PER_MS;
-static const nsecs_t RESAMPLE_MIN_DELTA = 10000000 * NANOS_PER_MS;
+static const nsecs_t RESAMPLE_MIN_DELTA = 2 * NANOS_PER_MS;
 
 // Maximum time to predict forward from the last known state, to avoid predicting too
 // far into the future.  This time is further bounded by 50% of the last time delta.
-//static const nsecs_t RESAMPLE_MAX_PREDICTION = 8 * NANOS_PER_MS;
-static const nsecs_t RESAMPLE_MAX_PREDICTION = 10000000 * NANOS_PER_MS;
+static const nsecs_t RESAMPLE_MAX_PREDICTION = 8 * NANOS_PER_MS;
 
 template<typename T>
 inline static T min(const T& a, const T& b) {
@@ -131,6 +128,15 @@ status_t InputChannel::openInputChannelPair(const String8& name,
     }
 
     int bufferSize = SOCKET_BUFFER_SIZE;
+    char value[PROPERTY_VALUE_MAX];
+    int bufferSizeProp = property_get("debug.inputconsumer.sockbuff", value, "32");
+    if (bufferSizeProp > 0) {
+        int bufferSize = strtol(value,NULL,0);
+#if DEBUG_CHANNEL_LIFECYCLE        
+        ALOGD("Input channel socket buffer size overridden with %d (was %d)", bufferSize, SOCKET_BUFFER_SIZE);
+#endif
+    }
+    
     setsockopt(sockets[0], SOL_SOCKET, SO_SNDBUF, &bufferSize, sizeof(bufferSize));
     setsockopt(sockets[0], SOL_SOCKET, SO_RCVBUF, &bufferSize, sizeof(bufferSize));
     setsockopt(sockets[1], SOL_SOCKET, SO_SNDBUF, &bufferSize, sizeof(bufferSize));
