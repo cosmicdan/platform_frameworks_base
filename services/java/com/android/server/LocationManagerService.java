@@ -492,6 +492,36 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
         }
     }
 
+    public void setGPSSource(String device) {
+        synchronized (mLock) {
+            if (mGpsLocationProvider != null &&
+                    mProvidersByName.containsKey(mGpsLocationProvider.getName())) {
+                Slog.i(TAG, "Disable and removing provider " + mGpsLocationProvider.getName());
+                mGpsLocationProvider.disable();
+                Settings.Secure.setLocationProviderEnabled(mContext.getContentResolver(),
+                        LocationManager.GPS_PROVIDER, false);
+                removeProvider(mGpsLocationProvider);
+                mGpsLocationProvider = null;
+            }
+            Slog.i(TAG, "Setting GPS Source to: " + device);
+            if ("0".equals(device)) {
+                if (mGpsLocationProvider != null && !GpsLocationProvider.isSupported())
+                    return;
+                GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);
+                mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+                mNetInitiatedListener = gpsProvider.getNetInitiatedListener();
+                addProvider(gpsProvider);
+                mGpsLocationProvider = gpsProvider;
+            //} else {
+            //    BTGpsLocationProvider gpsProvider = new BTGpsLocationProvider(mContext, this);
+            //    mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+            //    mNetInitiatedListener = null;
+            //    addProvider(gpsProvider);
+            //    mGpsLocationProvider = gpsProvider;
+            }
+        }
+    }
+
     private void _loadProvidersLocked() {
         // Attempt to load "real" providers first
         if (GpsLocationProvider.isSupported()) {
@@ -2099,7 +2129,13 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
 
                 final ConnectivityManager connManager = (ConnectivityManager) context
                         .getSystemService(Context.CONNECTIVITY_SERVICE);
-                final NetworkInfo info = connManager.getActiveNetworkInfo();
+                final NetworkInfo retInfo =
+                        (NetworkInfo) intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO);
+
+                // Pull the latest data. Note we cannot use getActiveNetworkInfo() here as this
+                // broadcast may be for a different mobile type than the current dominant connection,
+                // such as SUPL, and GpsLocationProvider needs to process those.
+                final NetworkInfo info = connManager.getNetworkInfo(retInfo.getType());
 
                 // Notify location providers of current network state
                 synchronized (mLock) {
