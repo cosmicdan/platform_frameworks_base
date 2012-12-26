@@ -25,8 +25,13 @@ LOCAL_C_INCLUDES += \
     external/skia/include/core \
     libcore/include \
     libcore/include/libsuspend \
-	$(call include-path-for, libhardware)/hardware \
-	$(call include-path-for, libhardware_legacy)/hardware_legacy \
+    $(call include-path-for, libhardware)/hardware \
+    $(call include-path-for, libhardware_legacy)/hardware_legacy \
+
+ifeq ($(BOARD_USES_ALSA_AUDIO),true)
+    LOCAL_CFLAGS += -DALSA_HEADSET_DETECTION
+    LOCAL_CFLAGS += -include linux/input.h
+endif
 
 LOCAL_SHARED_LIBRARIES := \
     libandroid_runtime \
@@ -46,6 +51,10 @@ LOCAL_SHARED_LIBRARIES := \
 
 ifeq ($(WITH_MALLOC_LEAK_CHECK),true)
     LOCAL_CFLAGS += -DMALLOC_LEAK_CHECK
+endif
+
+ifeq ($(TARGET_HAS_DOCK_BATTERY),true)
+    LOCAL_CFLAGS += -DHAS_DOCK_BATTERY
 endif
 
 LOCAL_MODULE:= libandroid_servers

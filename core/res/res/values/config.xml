@@ -269,6 +269,13 @@
          note that empty fields can be ommitted: "name,apn,,,,,,,,,310,260,,DUN" -->
     <string translatable="false" name="config_tether_apndata"></string>
 
+    <!-- Boolean indicating whether Softap requires reloading AP firmware -->
+    <bool name="config_wifiApFirmwareReload">true</bool>
+
+    <!-- Boolean indicating whether the start command should be called on the wireless interface
+         when starting the SoftAp -->
+    <bool name="config_wifiApStartInterface">false</bool>
+
     <!-- Boolean indicating whether the wifi chipset has dual frequency band support -->
     <bool translatable="false" name="config_wifi_dual_band_support">false</bool>
 
@@ -880,7 +887,15 @@
 
     <!-- CM CHANGES START HERE -->
 
+
+    <!-- If true, adds support for no delay A2DP in Samsung devices -->
+    <bool name="config_noDelayInATwoDP">false</bool>
     <!-- Boolean to enable stk functionality on Samsung phones -->
     <bool name="config_samsung_stk">false</bool>
 
+    <!-- Possible names from /devices/virtual/switch/dock for a dock device.
+         Some kernels use names like CAR and DESK. -->
+    <string-array translatable="false" name="config_accessoryDockNames">
+        <item>"dock"</item>
+    </string-array>
 </resources>

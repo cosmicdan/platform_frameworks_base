@@ -1538,6 +1538,12 @@ public final class Settings {
         public static final String VOLUME_BLUETOOTH_SCO = "volume_bluetooth_sco";
 
         /**
+         * Whether to prevent loud volume levels when headset is first plugged in.
+         * @hide
+         */
+        public static final String SAFE_HEADSET_VOLUME_RESTORE = "safe_headset_volume_restore";
+
+        /**
          * Master volume (float in the range 0.0f to 1.0f).
          * @hide
          */
@@ -2830,6 +2836,11 @@ public final class Settings {
          */
         public static final String ASSISTED_GPS_ENABLED = "assisted_gps_enabled";
 
+        /**
+         * External GPS source/device
+         * @hide
+         */
+        public static final String EXTERNAL_GPS_BT_DEVICE = "0";
         /**
          * The Logging ID (a unique 64-bit value) as a hex string.
          * Used as a pseudonymous identifier for logging.
