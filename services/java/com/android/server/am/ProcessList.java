@@ -194,10 +194,10 @@ class ProcessList {
         }
 
         //Slog.i("XXXXXXX", "******************************* MINFREE: " + memString);
-        if (write) {
-            writeFile("/sys/module/lowmemorykiller/parameters/adj", adjString.toString());
-            writeFile("/sys/module/lowmemorykiller/parameters/minfree", memString.toString());
-        }
+        //if (write) {
+        //    writeFile("/sys/module/lowmemorykiller/parameters/adj", adjString.toString());
+        //    writeFile("/sys/module/lowmemorykiller/parameters/minfree", memString.toString());
+        //}
         // GB: 2048,3072,4096,6144,7168,8192
         // HC: 8192,10240,12288,14336,16384,20480
     }
