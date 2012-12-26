@@ -1313,6 +1313,23 @@ public final class Settings {
          */
         public static final String WIFI_STATIC_DNS2 = "wifi_static_dns2";
 
+        /**
+         * Allows automatic retrieval of mms contents
+         * <p>Type: INT</p>
+         * 0 -- false
+         * 1 -- true
+         * @hide
+         */
+        public static final String MMS_AUTO_RETRIEVAL = "mms_auto_retrieval";
+
+        /**
+         * Allows automatic retrieval of mms contents during roaming
+         * <p>Type: INT</p>
+         * 0 -- false
+         * 1 -- true
+         * @hide
+         */
+        public static final String MMS_AUTO_RETRIEVAL_ON_ROAMING = "mms_auto_on_roaming";
 
         /**
          * Determines whether remote devices may discover and/or connect to
@@ -2060,7 +2077,14 @@ public final class Settings {
             VIBRATE_WHEN_RINGING
         };
 
+
         // Settings moved to Settings.Secure
+        /**
+         * Whether national data roaming should be used.
+         * @hide
+         */
+        public static final String MVNO_ROAMING = "mvno_roaming";
+
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#ADB_ENABLED}
@@ -2596,6 +2620,13 @@ public final class Settings {
          * by network, gps, or other location providers.
          */
         public static final String ALLOW_MOCK_LOCATION = "mock_location";
+
+        /**
+         * Setting to allow the use of {@link SMSDispatcher#MockSmsReceiver} to simulate
+         * the reception of SMS for testing purposes during application development.
+         * @hide
+         */
+        public static final String ALLOW_MOCK_SMS = "mock_sms";
 
         /**
          * A 64-bit number (as a hex string) that is randomly

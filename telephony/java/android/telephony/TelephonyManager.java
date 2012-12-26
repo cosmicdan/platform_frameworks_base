@@ -473,6 +473,13 @@ public class TelephonyManager {
         }
     }
 
+    /**
+     * {@hide}
+     */
+    public void toggleLTE(boolean on) {
+        //Silently fail
+    }
+
     /** Unknown network class. {@hide} */
     public static final int NETWORK_CLASS_UNKNOWN = 0;
     /** Class of broadly defined "2G" networks. {@hide} */
@@ -700,6 +707,14 @@ public class TelephonyManager {
             // This could happen before phone restarts due to crashing
             return Phone.LTE_ON_CDMA_UNKNOWN;
         }
+    }
+
+    /**
+     * Return if the current radio is LTE on GSM
+     * @hide
+     */
+    public int getLteOnGsmMode() {
+            return 0;
     }
 
     //
