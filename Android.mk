@@ -36,9 +36,10 @@ SECONDARY_FRAMEWORKS_SUBDIRS := \
         core/java/android/gesture \
         core/java/android/speech/srec \
         media/java/android/media/videoeditor \
-        media/java/android/media/audiofx \
         media/mca/effect/java/android/media/effect \
         media/mca/effect/java/android/media/effect/effects \
+        media/mca/filterfw/java/android/filterfw \
+        media/mca/filterpacks/java/android/filterpacks \
         voip/java/com/android/server/sip
 
 include $(CLEAR_VARS)
