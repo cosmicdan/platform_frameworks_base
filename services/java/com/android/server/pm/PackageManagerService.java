@@ -5283,6 +5283,10 @@ public class PackageManagerService extends IPackageManager.Stub {
             ManifestDigest manifestDigest, ContainerEncryptionParams encryptionParams) {
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.INSTALL_PACKAGES, null);
 
+        //remove forward-locking flag (solve ASEC issues)
+        flags &= ~PackageManager.INSTALL_FORWARD_LOCK;
+        Slog.i(TAG, "Forward-locking flag removed (CosmicDan)");
+
         final int uid = Binder.getCallingUid();
 
         final int filteredFlags;
@@ -6139,7 +6143,9 @@ public class PackageManagerService extends IPackageManager.Stub {
      * @return true if should be installed as forward locked
      */
     private static boolean installForwardLocked(int flags) {
-        return (flags & PackageManager.INSTALL_FORWARD_LOCK) != 0;
+        //return (flags & PackageManager.INSTALL_FORWARD_LOCK) != 0;
+        Slog.i(TAG, "Forward-locking overridden (CosmicDan)");
+        return false;
     }
 
     private InstallArgs createInstallArgs(InstallParams params) {
